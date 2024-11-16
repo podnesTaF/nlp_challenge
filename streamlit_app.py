@@ -1,5 +1,6 @@
 import streamlit as st
 from src.utils.pdf_processing import process_and_store_pdf
+from src.utils.image_processing import process_and_store_image  # Import the image utility
 from src.agents.crew_agent import Agent
 
 # Initialize the Agent
@@ -27,34 +28,29 @@ else:
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # PDF Upload Section
-    st.subheader("Upload PDF Materials")
-    uploaded_files = st.file_uploader("Upload PDF files", type="pdf", accept_multiple_files=True)
+    # File Upload Section for PDFs and Images
+    st.subheader("Upload Files")
+    col1, col2 = st.columns(2)
 
-    # Process each uploaded PDF and store in ChromaDB
-    if uploaded_files:
-        st.success(f"Uploaded {len(uploaded_files)} PDF(s). Processing...")
-        for file in uploaded_files:
-            processing_message = process_and_store_pdf(file)
-            st.write(processing_message)
+    # PDF Upload
+    with col1:
+        uploaded_pdfs = st.file_uploader("Upload PDF files", type="pdf", accept_multiple_files=True)
+        if uploaded_pdfs:
+            st.success(f"Uploaded {len(uploaded_pdfs)} PDF(s). Processing...")
+            for file in uploaded_pdfs:
+                processing_message = process_and_store_pdf(file)
+                st.write(processing_message)
 
-    st.dialog("🎨 Upload a picture")
-    def upload_document():
-      st.warning(
-          "This is a demo dialog window. You need to process the file afterwards.",
-          icon="💡",
-      )
-      picture = st.file_uploader(
-          "Choose a file", type=["jpg", "png", "bmp"], label_visibility="hidden"
-      )
-      if picture:
-          st.session_state["uploaded_pic"] = True
-          st.rerun()
+    # Image Upload
+    with col2:
+        uploaded_images = st.file_uploader("Upload Images", type=["jpg", "png", "bmp"], accept_multiple_files=True)
+        if uploaded_images:
+          for file in uploaded_images:
+              processing_message = process_and_store_image(file)
 
-
-    if "uploaded_pic" in st.session_state and st.session_state["uploaded_pic"]:
-      st.toast("Picture uploaded!", icon="📥")
-      del st.session_state["uploaded_pic"]
+              # Append processing details to the chat
+              st.session_state.messages.append({"role": "user", "content": f"📷 Image attached: {file.name}"})
+              st.session_state.messages.append({"role": "system", "content": processing_message})
 
     # Display previous chat messages
     for message in st.session_state.messages:
