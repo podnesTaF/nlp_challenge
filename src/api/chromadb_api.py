@@ -16,7 +16,22 @@ def add_document_to_chromadb(text, doc_id):
     return f"Document {doc_id} added to ChromaDB."
 
 def retrieve_relevant_docs_from_chromadb(query):
-    query_embedding = create_embedding(query) 
+    """
+    Retrieve relevant documents along with their metadata.
+    """
+    query_embedding = create_embedding(query)
     results = collection.query(query_embeddings=[query_embedding], n_results=3)
 
-    return results["documents"] 
+    # Return documents with metadata
+    return [{"document": doc, "metadata": meta} for doc, meta in zip(results["documents"], results["metadatas"])]
+
+
+def remove_document_from_chromadb(doc_id):
+    """
+    Remove a document from ChromaDB by its unique identifier.
+    """
+    try:
+        collection.delete(ids=[doc_id])
+        return f"Document {doc_id} removed from ChromaDB."
+    except Exception as e:
+        return f"Error removing document {doc_id}: {e}"

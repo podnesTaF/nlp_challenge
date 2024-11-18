@@ -8,20 +8,31 @@ class Agent:
         with open(config_path, "r") as f:
             self.config = yaml.safe_load(f)
 
-        self.name = self.config["agents"][0]["name"]  # Assuming single agent for now
+        self.name = self.config["agents"][0]["name"]
         self.description = self.config["agents"][0]["description"]
 
-    def respond(self, user_input, api_key):
-        """
-        Process user input, retrieve context, and generate a response using Groq API.
-        """
-        # Retrieve relevant documents from ChromaDB
-        relevant_docs = retrieve_relevant_docs_from_chromadb(user_input)
-        context = [{"role": "system", "content": f"Reference Document: {doc}"} for doc in relevant_docs]
+    def rag_pipeline(self, user_input, api_key):
+      relevant_docs = retrieve_relevant_docs_from_chromadb(user_input)
 
-        # Prepare message history
-        messages = [{"role": "user", "content": user_input}] + context
+      # Debug: Check the structure
+      print(f"Debug relevant_docs: {relevant_docs}")
 
-        # Generate response using Groq API
-        response = query_groq(user_input, messages, api_key)
-        return response
+      # Handle the structure and prepare context
+      context = "\n".join(
+          [
+              f"Reference {i+1} (Title: {doc['metadata'].get('title', 'No Title') if isinstance(doc['metadata'], dict) else 'No Metadata'}): {doc['document']}"
+              for i, doc in enumerate(relevant_docs)
+          ]
+      )
+      prompt = (
+          f"Context:\n{context}\n\n"
+          f"Question:\n{user_input}\n\n"
+          f"Answer with references to the documents provided above."
+      )
+
+      # Generate response
+      response = query_groq(prompt, [{"role": "system", "content": context}], api_key)
+      return response, [
+          doc["metadata"].get("title", "No Title") if isinstance(doc["metadata"], dict) else "No Metadata"
+          for doc in relevant_docs
+      ]
