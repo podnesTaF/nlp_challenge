@@ -16,13 +16,9 @@ def add_document_to_chromadb(text, doc_id):
     return f"Document {doc_id} added to ChromaDB."
 
 def retrieve_relevant_docs_from_chromadb(query):
-    """
-    Retrieve relevant documents along with their metadata.
-    """
-    query_embedding = create_embedding(query)
+    query_embedding = create_embedding(query) 
     results = collection.query(query_embeddings=[query_embedding], n_results=3)
 
-    # Return documents with metadata
     return [{"document": doc, "metadata": meta} for doc, meta in zip(results["documents"], results["metadatas"])]
 
 
