@@ -2,16 +2,17 @@ import streamlit as st
 from src.utils.pdf_processing import process_and_store_pdf
 from src.api.chromadb_api import remove_document_from_chromadb
 from src.agents.crew_agent import Agent
+from src.agents.content_agent import ContentIngestionAgent
+from src.agents.qa_agent import QuestionAnsweringAgent
+
+content_agent = ContentIngestionAgent(vector_db_client="course_documents")
+qa_agent = QuestionAnsweringAgent()
 
 st.set_page_config(
     page_title="Personalized Learning Assistant",
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
-# Initialize the Agent
-agent = Agent(config_path="./src/config/agents.yaml")
-
 # Sidebar for Options
 st.sidebar.title("Options")
 llm_choice = st.sidebar.selectbox("Choose LLM", ["Groq API (default)", "Other LLMs (future)"])
@@ -43,7 +44,7 @@ with col_chat:
             for message in st.session_state.messages:
                 with st.chat_message(message["role"]):
                     st.markdown(message["content"])
-
+            
         # Input field positioned after messages
         prompt = st.chat_input("Ask a question...")
         if prompt:
@@ -52,13 +53,14 @@ with col_chat:
                 with st.chat_message("user"):
                     st.markdown(prompt)
 
-            uploaded_files = st.session_state.get("uploaded_files", [])
-            response = agent.respond(prompt, groq_api_key, uploaded_files)
+            # Generate response
+            response = qa_agent.respond(prompt, groq_api_key)
+            st.session_state.messages.append({"role": "assistant", "content": response})
 
-            with messages_container:  # Append assistant response to the container
+            # Add assistant message
+            with messages_container:  # Append assistant response
                 with st.chat_message("assistant"):
                     st.markdown(response)
-            st.session_state.messages.append({"role": "assistant", "content": response})
 
 # Right Column: File Management
 with col_files:
@@ -75,12 +77,12 @@ with col_files:
             "Upload PDF files", type="pdf", accept_multiple_files=True, label_visibility="hidden"
         )
         if uploaded_pdfs:
-          for file in uploaded_pdfs:
-              if file.name not in [f["name"] for f in st.session_state.uploaded_files]:
-                  # Process and add the file
-                  processing_message = process_and_store_pdf(file)
-                  st.session_state.uploaded_files.append({"name": file.name, "status": "Processed", "file_obj": file})
-                  st.write(processing_message)
+            for file in uploaded_pdfs:
+                if file.name not in [f["name"] for f in st.session_state.uploaded_files]:
+                    # Process and add the file using Content Ingestion Agent
+                    processing_message = content_agent.process_pdf(file)
+                    st.session_state.uploaded_files.append({"name": file.name, "status": "Processed", "file_obj": file})
+                    st.write(processing_message)
 
         if st.session_state.uploaded_files:
           st.subheader("Uploaded Files")
@@ -104,7 +106,3 @@ with col_files:
                   st.session_state.uploaded_files = [
                       f for f in st.session_state.uploaded_files if f["name"] != file["name"]
                   ]
-          
-          # Synchronize st.file_uploader with session state
-          remaining_files = [file["file_obj"] for file in st.session_state.uploaded_files]
-          st.file_uploader("Upload PDF files", type="pdf", accept_multiple_files=True, label_visibility="hidden", key="reupload", value=remaining_files)

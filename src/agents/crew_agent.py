@@ -9,25 +9,9 @@ class Agent:
         with open(config_path, "r") as f:
             self.config = yaml.safe_load(f)
 
-        self.name = self.config["agents"][0]["name"]  # Assuming single agent for now
+        self.name = self.config["agents"][0]["name"] 
         self.description = self.config["agents"][0]["description"]
-        self.summarizer = pipeline("summarization")  # Initialize summarizer
-
-    # def get_top_relevant_docs(self, user_input, top_n=3):
-    #     """
-    #     Retrieve and rank relevant documents by similarity score.
-    #     """
-    #     relevant_docs = retrieve_relevant_docs_from_chromadb(user_input)
-    #     print(f"DEBUG: Retrieved documents: {relevant_docs}")  # Debug the output structure
-
-    #     # Ensure relevant_docs is properly formatted
-    #     if not relevant_docs or not all("document" in doc and "score" in doc for doc in relevant_docs):
-    #         print("DEBUG: No valid documents or incorrect structure.")
-    #         return []
-
-    #     # Sort and return the top N documents
-    #     ranked_docs = sorted(relevant_docs, key=lambda x: x["score"], reverse=True)
-    #     return ranked_docs[:top_n]
+        self.summarizer = pipeline("summarization") 
 
     def summarize_document(self, doc_content, max_length=100):
         """
@@ -54,13 +38,9 @@ class Agent:
       return prompt
 
     def respond(self, user_input, api_key, uploaded_files):
-      """
-      Process user input, retrieve context, and generate a response using Groq API.
-      """
       if uploaded_files:
           # Retrieve top relevant documents
           top_docs = retrieve_relevant_docs_from_chromadb(user_input)
-          print(f"DEBUG: Top Relevant Documents: {top_docs}")
 
           if top_docs:
               summaries = [
@@ -69,13 +49,11 @@ class Agent:
               ]
               messages = summaries + [{"role": "user", "content": user_input}]
           else:
-              print("DEBUG: No relevant documents found. Falling back to general knowledge.")
               messages = [
                   {"role": "system", "content": "No relevant documents were found. Answer based on general knowledge."},
                   {"role": "user", "content": user_input},
               ]
       else:
-          print("DEBUG: No files uploaded. Using general knowledge.")
           messages = [
               {"role": "system", "content": "No relevant documents were found. Answer based on general knowledge."},
               {"role": "user", "content": user_input},
