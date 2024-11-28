@@ -1,10 +1,15 @@
 import streamlit as st
+from src.agents.crew_agent import create_qa_task, initialize_qa_agent
 from src.utils.pdf_processing import process_and_store_pdf
-from src.api.chromadb_api import remove_document_from_chromadb
+from src.api.chromadb_api import get_uploaded_documents, remove_document_from_chromadb, retrieve_relevant_docs_from_chromadb
 from src.agents.content_agent import ContentIngestionAgent
 from src.agents.qa_agent import QuestionAnsweringAgent
 import os
 from dotenv import load_dotenv
+from crewai import Crew
+from langchain_groq import ChatGroq
+
+from src.utils.summarization import summarize_document
 
 load_dotenv()
 
@@ -14,12 +19,17 @@ search_engine_id = os.getenv("SEARCH_ENGINE_ID")
 
 
 # Initialize content ingestion agent
-content_agent = ContentIngestionAgent(vector_db_client="course_documents")
-qa_agent = QuestionAnsweringAgent(
-    groq_api_key=groq_api_key,
-    web_search_api_key=google_api_key,
-    search_engine_id=search_engine_id
+content_agent = ContentIngestionAgent()
+
+
+llm = ChatGroq(
+    temperature=0,
+    groq_api_key=groq_api_key, 
+    model=f'groq/llama3-8b-8192'
 )
+
+qa_agent = initialize_qa_agent(llm)
+
 
 # Streamlit setup
 st.set_page_config(
@@ -77,14 +87,31 @@ with col_chat:
                 search_mode = "online"
                 prompt = prompt[len("online:"):].strip()
 
-            # Generate response
-            response = qa_agent.respond(prompt, mode=search_mode.lower())
-            st.session_state.messages.append({"role": "assistant", "content": response})
+            uploaded_documents = get_uploaded_documents()
+
+            relevant_docs = []
+            if len(uploaded_documents):
+              relevant_docs = retrieve_relevant_docs_from_chromadb(prompt)
+
+            context = []
+            if relevant_docs:
+                context = [
+                    {"role": "system", "metadata": f"{doc['metadata']}", "content": f"{summarize_document(doc['document'])}"}
+                    for i, doc in enumerate(relevant_docs)
+                ]
+
+            # Create and execute the QA task
+            qa_task = create_qa_task(prompt, agent=qa_agent, context=context)
+            crew = Crew(agents=[qa_agent], tasks=[qa_task], verbose=True)
+
+            result = crew.kickoff()
+
+            st.session_state.messages.append({"role": "assistant", "content": result})
 
             # Add assistant message
             with messages_container:  # Append assistant response
                 with st.chat_message("assistant"):
-                    st.markdown(response)
+                    st.markdown(result)
 
 if "uploaded_files" not in st.session_state:
     st.session_state.uploaded_files = []
@@ -141,11 +168,14 @@ with col_files:
 
         # Display Uploaded Files
         st.subheader("Uploaded Files")
+        uploaded_documents = get_uploaded_documents()
+        print(uploaded_documents)
+
         filter_query = st.text_input("Search files by name:", key="file_filter_query").strip().lower()
         filtered_files = [
-            file for file in st.session_state.uploaded_files
+            file for file in uploaded_documents
             if filter_query in file["name"].lower()
-        ] if filter_query else st.session_state.uploaded_files
+        ] if filter_query else uploaded_documents
 
         for file in filtered_files:
             col1, col2 = st.columns([3, 1])
@@ -155,7 +185,5 @@ with col_files:
                 remove_message = remove_document_from_chromadb(file["name"])
                 st.write(remove_message)
 
-                # Update session state
-                st.session_state.uploaded_files = [
-                    f for f in st.session_state.uploaded_files if f["name"] != file["name"]
-                ]
+                # Update display after removal
+                uploaded_documents = get_uploaded_documents()
