@@ -1,64 +1,31 @@
-import yaml
-from src.api.groq_api import query_groq
-from src.api.chromadb_api import retrieve_relevant_docs_from_chromadb
-from transformers import pipeline
+from crewai import Agent, Task
 
-class Agent:
-    def __init__(self, config_path="../config/agents.yaml"):
-        # Load the agent configuration
-        with open(config_path, "r") as f:
-            self.config = yaml.safe_load(f)
 
-        self.name = self.config["agents"][0]["name"] 
-        self.description = self.config["agents"][0]["description"]
-        self.summarizer = pipeline("summarization") 
+def initialize_qa_agent(llm):
 
-    def summarize_document(self, doc_content, max_length=100):
-        """
-        Summarize the content of a document for better LLM context.
-        """
-        summary = self.summarizer(doc_content, max_length=max_length, min_length=30, do_sample=False)
-        return summary[0]["summary_text"]
+    return Agent(
+        name="question_answering_agent",
+        role="Question Answering Specialist",
+        goal="Answer user queries by retrieving relevant information from the vector database and generating accurate responses using RAG.",
+        backstory="You're a knowledgeable assistant capable of combining retrieved content with LLM capabilities to deliver precise answers.",
+        llm=llm
+    )
 
-    def create_prompt(self, user_input, summaries=None):
-      """
-      Create a structured prompt with summaries and user query.
-      If no summaries are provided, create a simple query.
-      """
-      if summaries:
-          context = "\n".join([f"{summary['content']}" for summary in summaries])
-          prompt = (
-              f"Based on the following references:\n{context}\n\n"
-              f"Question:\n{user_input}\n\n"
-              f"Answer in detail and reference the summaries provided."
-          )
-      else:
-          # Fallback prompt without references
-          prompt = f"Question:\n{user_input}\n\nAnswer based on your general knowledge."
-      return prompt
 
-    def respond(self, user_input, api_key, uploaded_files):
-      if uploaded_files:
-          # Retrieve top relevant documents
-          top_docs = retrieve_relevant_docs_from_chromadb(user_input)
+def create_qa_task(prompt, agent, context=None):
+    description = f"Answer the user's query: '{prompt}'."
+   
+    if context:
+        context_str = "\n".join(
+            [
+                f"Reference {i+1}: {entry['content']} (file name: {entry['metadata']})"
+                for i, entry in enumerate(context)
+            ]
+        )
+        description += f" Include the following context:\n{context_str}"
 
-          if top_docs:
-              summaries = [
-                  {"role": "system", "content": f"Reference {i+1}: {self.summarize_document(doc['document'])}"}
-                  for i, doc in enumerate(top_docs)
-              ]
-              messages = summaries + [{"role": "user", "content": user_input}]
-          else:
-              messages = [
-                  {"role": "system", "content": "No relevant documents were found. Answer based on general knowledge."},
-                  {"role": "user", "content": user_input},
-              ]
-      else:
-          messages = [
-              {"role": "system", "content": "No relevant documents were found. Answer based on general knowledge."},
-              {"role": "user", "content": user_input},
-          ]
-
-      # Generate response using Groq API
-      response = query_groq(user_input, messages, api_key)
-      return response
+    return Task(
+        description=description,
+        agent=agent,
+        expected_output="A detailed and accurate response including retrieved context and references to the file names which used in response."
+    )
