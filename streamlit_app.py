@@ -1,24 +1,43 @@
 import streamlit as st
 from src.utils.pdf_processing import process_and_store_pdf
 from src.api.chromadb_api import remove_document_from_chromadb
-from src.agents.crew_agent import Agent
 from src.agents.content_agent import ContentIngestionAgent
 from src.agents.qa_agent import QuestionAnsweringAgent
+import os
+from dotenv import load_dotenv
 
+load_dotenv()
+
+groq_api_key = os.getenv("GROQ_API_KEY")
+google_api_key = os.getenv("GOOGLE_API_KEY")
+search_engine_id = os.getenv("SEARCH_ENGINE_ID")
+
+
+# Initialize content ingestion agent
 content_agent = ContentIngestionAgent(vector_db_client="course_documents")
-qa_agent = QuestionAnsweringAgent()
+qa_agent = QuestionAnsweringAgent(
+    groq_api_key=groq_api_key,
+    web_search_api_key=google_api_key,
+    search_engine_id=search_engine_id
+)
 
+# Streamlit setup
 st.set_page_config(
     page_title="Personalized Learning Assistant",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
 # Sidebar for Options
 st.sidebar.title("Options")
 llm_choice = st.sidebar.selectbox("Choose LLM", ["Groq API (default)", "Other LLMs (future)"])
 st.sidebar.write("Selected LLM:", llm_choice)
+
+# API key inputs
 groq_api_key = st.sidebar.text_input("Enter Groq API Key", type="password")
 
+# Search mode toggle
+search_mode = st.sidebar.radio("Search Mode", ["Local", "Online"])
 
 # Main Layout
 col_chat, col_files = st.columns([3, 1])
@@ -30,9 +49,9 @@ with col_chat:
         "You can upload course documents and ask questions for tailored responses."
     )
 
-    # Check if token is added
+    # Check if Groq API key is added
     if not groq_api_key:
-        st.error("No API key provided. Please enter your API key in the sidebar to proceed.", icon="⚠️")
+        st.error("No Groq API key provided. Please enter your API key in the sidebar to proceed.", icon="⚠️")
     else:
         # Initialize session state for chat messages
         if "messages" not in st.session_state:
@@ -44,7 +63,7 @@ with col_chat:
             for message in st.session_state.messages:
                 with st.chat_message(message["role"]):
                     st.markdown(message["content"])
-            
+
         # Input field positioned after messages
         prompt = st.chat_input("Ask a question...")
         if prompt:
@@ -53,8 +72,13 @@ with col_chat:
                 with st.chat_message("user"):
                     st.markdown(prompt)
 
+            # Determine search mode based on user input
+            if prompt.lower().startswith("online:"):
+                search_mode = "online"
+                prompt = prompt[len("online:"):].strip()
+
             # Generate response
-            response = qa_agent.respond(prompt, groq_api_key)
+            response = qa_agent.respond(prompt, mode=search_mode.lower())
             st.session_state.messages.append({"role": "assistant", "content": response})
 
             # Add assistant message
@@ -70,7 +94,7 @@ with col_files:
         st.subheader("File Management")
 
         if "uploaded_files" not in st.session_state:
-          st.session_state.uploaded_files = []
+            st.session_state.uploaded_files = []
 
         # File upload section
         uploaded_pdfs = st.file_uploader(
@@ -85,24 +109,24 @@ with col_files:
                     st.write(processing_message)
 
         if st.session_state.uploaded_files:
-          st.subheader("Uploaded Files")
-          filter_query = st.text_input("Search files by name:", key="file_filter_query").strip().lower()
-          filtered_files = [
-              file for file in st.session_state.uploaded_files
-              if filter_query in file["name"].lower()
-          ] if filter_query else st.session_state.uploaded_files
+            st.subheader("Uploaded Files")
+            filter_query = st.text_input("Search files by name:", key="file_filter_query").strip().lower()
+            filtered_files = [
+                file for file in st.session_state.uploaded_files
+                if filter_query in file["name"].lower()
+            ] if filter_query else st.session_state.uploaded_files
 
-          for file in filtered_files:
-              col1, col2 = st.columns([3, 1], vertical_alignment="center")
-              col1.write(f"📄 {file['name']} - {file['status']}")
-              
-              # Remove button
-              if col2.button("Remove", key=f"remove_{file['name']}"):
-                  # Remove file from ChromaDB
-                  remove_message = remove_document_from_chromadb(file["name"])
-                  st.write(remove_message)
-                  
-                  # Update the session state
-                  st.session_state.uploaded_files = [
-                      f for f in st.session_state.uploaded_files if f["name"] != file["name"]
-                  ]
+            for file in filtered_files:
+                col1, col2 = st.columns([3, 1], vertical_alignment="center")
+                col1.write(f"📄 {file['name']} - {file['status']}")
+                
+                # Remove button
+                if col2.button("Remove", key=f"remove_{file['name']}"):
+                    # Remove file from ChromaDB
+                    remove_message = remove_document_from_chromadb(file["name"])
+                    st.write(remove_message)
+                    
+                    # Update the session state
+                    st.session_state.uploaded_files = [
+                        f for f in st.session_state.uploaded_files if f["name"] != file["name"]
+                    ]

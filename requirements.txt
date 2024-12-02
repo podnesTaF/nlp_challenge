@@ -3,3 +3,4 @@ chromadb==0.3.29
 sentence-transformers
 PyPDF2
 pillow
+python-dotenv
