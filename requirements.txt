@@ -4,3 +4,7 @@ sentence-transformers
 PyPDF2
 pillow
 python-dotenv
+youtube-transcript-api
+python-pptx
+pytesseract
+llama-index

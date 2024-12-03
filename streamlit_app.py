@@ -36,6 +36,9 @@ st.sidebar.write("Selected LLM:", llm_choice)
 # Search mode toggle
 search_mode = st.sidebar.radio("Search Mode", ["Local", "Online"])
 
+content_type = st.sidebar.selectbox("Choose Content Type to Upload", ["PDF", "YouTube Video", "PowerPoint"])
+
+
 # Main Layout
 col_chat, col_files = st.columns([3, 1])
 
@@ -83,47 +86,76 @@ with col_chat:
                 with st.chat_message("assistant"):
                     st.markdown(response)
 
-# Right Column: File Management
+if "uploaded_files" not in st.session_state:
+    st.session_state.uploaded_files = []
+
+def add_to_uploaded_files(name, status="Processed"):
+    """
+    Add an entry to the session_state uploaded_files list.
+    """
+    st.session_state.uploaded_files.append({"name": name, "status": status})
+
+# File Management Logic
 with col_files:
     if not groq_api_key:
-        st.write("")  # Placeholder if API key is not provided
+        st.write("Please provide the Groq API Key in the sidebar to enable content ingestion.")
     else:
         st.subheader("File Management")
 
-        if "uploaded_files" not in st.session_state:
-            st.session_state.uploaded_files = []
+        if content_type == "PDF":
+            uploaded_pdfs = st.file_uploader(
+                "Upload PDF files", type="pdf", accept_multiple_files=True, label_visibility="hidden"
+            )
+            if uploaded_pdfs:
+                for file in uploaded_pdfs:
+                    if file.name not in [f["name"] for f in st.session_state.uploaded_files]:
+                        # Process PDF
+                        processing_message = content_agent.process_pdf(file)
+                        st.write(processing_message)
 
-        # File upload section
-        uploaded_pdfs = st.file_uploader(
-            "Upload PDF files", type="pdf", accept_multiple_files=True, label_visibility="hidden"
-        )
-        if uploaded_pdfs:
-            for file in uploaded_pdfs:
-                if file.name not in [f["name"] for f in st.session_state.uploaded_files]:
-                    # Process and add the file using Content Ingestion Agent
-                    processing_message = content_agent.process_pdf(file)
-                    st.session_state.uploaded_files.append({"name": file.name, "status": "Processed", "file_obj": file})
-                    st.write(processing_message)
+                        # Add to uploaded files
+                        add_to_uploaded_files(file.name)
 
-        if st.session_state.uploaded_files:
-            st.subheader("Uploaded Files")
-            filter_query = st.text_input("Search files by name:", key="file_filter_query").strip().lower()
-            filtered_files = [
-                file for file in st.session_state.uploaded_files
-                if filter_query in file["name"].lower()
-            ] if filter_query else st.session_state.uploaded_files
+        elif content_type == "YouTube Video":
+            video_url = st.text_input("Enter YouTube Video URL")
+            if st.button("Process Video"):
+                # Process YouTube Video
+                processing_message = content_agent.process_youtube_video(video_url)
+                st.write(processing_message)
 
-            for file in filtered_files:
-                col1, col2 = st.columns([3, 1], vertical_alignment="center")
-                col1.write(f"📄 {file['name']} - {file['status']}")
-                
-                # Remove button
-                if col2.button("Remove", key=f"remove_{file['name']}"):
-                    # Remove file from ChromaDB
-                    remove_message = remove_document_from_chromadb(file["name"])
-                    st.write(remove_message)
-                    
-                    # Update the session state
-                    st.session_state.uploaded_files = [
-                        f for f in st.session_state.uploaded_files if f["name"] != file["name"]
-                    ]
+                # Add to uploaded files
+                video_id = video_url.split("v=")[-1]
+                if f"YouTube Video: {video_id}" not in [f["name"] for f in st.session_state.uploaded_files]:
+                    add_to_uploaded_files(f"YouTube Video: {video_id}")
+
+        elif content_type == "PowerPoint":
+            uploaded_pptx = st.file_uploader("Upload PowerPoint File", type="pptx")
+            if uploaded_pptx and st.button("Process PowerPoint"):
+                # Process PowerPoint
+                processing_message = content_agent.process_pptx(uploaded_pptx)
+                st.write(processing_message)
+
+                # Add to uploaded files
+                if uploaded_pptx.name not in [f["name"] for f in st.session_state.uploaded_files]:
+                    add_to_uploaded_files(uploaded_pptx.name)
+
+        # Display Uploaded Files
+        st.subheader("Uploaded Files")
+        filter_query = st.text_input("Search files by name:", key="file_filter_query").strip().lower()
+        filtered_files = [
+            file for file in st.session_state.uploaded_files
+            if filter_query in file["name"].lower()
+        ] if filter_query else st.session_state.uploaded_files
+
+        for file in filtered_files:
+            col1, col2 = st.columns([3, 1])
+            col1.write(f"📄 {file['name']} - {file['status']}")
+            if col2.button("Remove", key=f"remove_{file['name']}"):
+                # Remove file from ChromaDB
+                remove_message = remove_document_from_chromadb(file["name"])
+                st.write(remove_message)
+
+                # Update session state
+                st.session_state.uploaded_files = [
+                    f for f in st.session_state.uploaded_files if f["name"] != file["name"]
+                ]
