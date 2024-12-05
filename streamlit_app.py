@@ -1,21 +1,22 @@
+from api.chromadb_api import get_uploaded_documents, remove_document_from_chromadb, retrieve_relevant_docs_from_chromadb
 import streamlit as st
 from src.agents.crew_agent import create_qa_task, initialize_qa_agent
 from src.utils.pdf_processing import process_and_store_pdf
-from src.api.chromadb_api import get_uploaded_documents, remove_document_from_chromadb, retrieve_relevant_docs_from_chromadb
 from src.agents.content_agent import ContentIngestionAgent
 from src.agents.qa_agent import QuestionAnsweringAgent
 import os
 from dotenv import load_dotenv
 from crewai import Crew
 from langchain_groq import ChatGroq
-
 from src.utils.summarization import summarize_document
+
 
 load_dotenv()
 
 groq_api_key = os.getenv("GROQ_API_KEY")
 google_api_key = os.getenv("GOOGLE_API_KEY")
 search_engine_id = os.getenv("SEARCH_ENGINE_ID")
+openai_api_key = os.getenv("OPENAI_API_KEY")
 
 
 # Initialize content ingestion agent
