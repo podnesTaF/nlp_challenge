@@ -1,36 +1,23 @@
-from api.chromadb_api import get_uploaded_documents, remove_document_from_chromadb, retrieve_relevant_docs_from_chromadb
+import base64
+from src.agents.web_search_agent import  create_web_search_task, initiate_web_agent
+from src.api.models import initialize_groq_llm, initialize_openai_llm
 import streamlit as st
-from src.agents.crew_agent import create_qa_task, initialize_qa_agent
-from src.utils.pdf_processing import process_and_store_pdf
+from src.api.chromadb_api import get_uploaded_documents, remove_document_from_chromadb, retrieve_relevant_docs_from_chromadb
+from src.agents.crew_agent import  create_pdf_summary_task, create_qa_task, create_quiz_task, initialize_pdf_summary_agent, initialize_question_answering_agent, initialize_quiz_agent
 from src.agents.content_agent import ContentIngestionAgent
-from src.agents.qa_agent import QuestionAnsweringAgent
 import os
 from dotenv import load_dotenv
-from crewai import Crew
-from langchain_groq import ChatGroq
-from src.utils.summarization import summarize_document
+from crewai import Crew,Process
 
 
 load_dotenv()
 
 groq_api_key = os.getenv("GROQ_API_KEY")
-google_api_key = os.getenv("GOOGLE_API_KEY")
-search_engine_id = os.getenv("SEARCH_ENGINE_ID")
 openai_api_key = os.getenv("OPENAI_API_KEY")
 
 
 # Initialize content ingestion agent
 content_agent = ContentIngestionAgent()
-
-
-llm = ChatGroq(
-    temperature=0,
-    groq_api_key=groq_api_key, 
-    model=f'groq/llama3-8b-8192'
-)
-
-qa_agent = initialize_qa_agent(llm)
-
 
 # Streamlit setup
 st.set_page_config(
@@ -39,25 +26,48 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Sidebar for Options
-st.sidebar.title("Options")
-llm_choice = st.sidebar.selectbox("Choose LLM", ["Groq API (default)", "Other LLMs (future)"])
-st.sidebar.write("Selected LLM:", llm_choice)
+
+llm_options = {"Groq API": initialize_groq_llm, "OpenAI": initialize_openai_llm}
+selected_llm_name = st.sidebar.selectbox("Choose LLM", list(llm_options.keys()), key="llm_choice")
+st.sidebar.write("Selected LLM:", selected_llm_name)
+
+llm_initializer = llm_options[selected_llm_name]
+llm = llm_initializer()
+
+# Initialize agents
+pdf_summary_agent = initialize_pdf_summary_agent(llm)
+qa_agent = initialize_question_answering_agent(llm)
+quiz_agent = initialize_quiz_agent(llm)
+
+web_search_agent = initiate_web_agent(llm)
+
+
+content_type = st.sidebar.selectbox("Choose Content Type to Upload", ["PDF", "YouTube Video", "PowerPoint"])
+
+# Agent selection
+selected_agent = st.sidebar.selectbox("Choose Agent", ["Personalized Learning Assistant", "Quiz Creator"])
+st.sidebar.write("Selected Agent:", selected_agent)
+
 
 # Search mode toggle
 search_mode = st.sidebar.radio("Search Mode", ["Local", "Online"])
 
-content_type = st.sidebar.selectbox("Choose Content Type to Upload", ["PDF", "YouTube Video", "PowerPoint"])
 
 
 # Main Layout
 col_chat, col_files = st.columns([3, 1])
 
 with col_chat:
-    st.title("💬 Personalized Learning Assistant")
+    if selected_agent == "Personalized Learning Assistant":
+        st.title("💬 Personalized Learning Assistant")
+        input_placeholder = "Ask a question..."
+    elif selected_agent == "Quiz Creator":
+        st.title("📝 Quiz Creator")
+        input_placeholder = "Enter the topic of the quiz"
+
     st.write(
-        "This is a simple chatbot designed to provide personalized learning assistance. "
-        "You can upload course documents and ask questions for tailored responses."
+        "This is a chatbot designed for personalized learning assistance and quiz generation. "
+        "You can upload documents or specify a topic for a quiz."
     )
 
     # Check if Groq API key is added
@@ -76,43 +86,51 @@ with col_chat:
                     st.markdown(message["content"])
 
         # Input field positioned after messages
-        prompt = st.chat_input("Ask a question...")
+        prompt = st.chat_input(input_placeholder)
         if prompt:
             st.session_state.messages.append({"role": "user", "content": prompt})
-            with messages_container:  # Append new messages to the container
+            with messages_container:
                 with st.chat_message("user"):
                     st.markdown(prompt)
 
-            # Determine search mode based on user input
-            if prompt.lower().startswith("online:"):
-                search_mode = "online"
-                prompt = prompt[len("online:"):].strip()
+            tasks = []
+            agents = []
 
-            uploaded_documents = get_uploaded_documents()
+            if search_mode == "Local":
+            
+              context = retrieve_relevant_docs_from_chromadb(prompt)
 
-            relevant_docs = []
-            if len(uploaded_documents):
-              relevant_docs = retrieve_relevant_docs_from_chromadb(prompt)
+              if context:
+                  tasks.append(create_pdf_summary_task(context=context, agent=pdf_summary_agent))
+                  agents.append(pdf_summary_agent)
 
-            context = []
-            if relevant_docs:
-                context = [
-                    {"role": "system", "metadata": f"{doc['metadata']}", "content": f"{summarize_document(doc['document'])}"}
-                    for i, doc in enumerate(relevant_docs)
-                ]
+          
+              if selected_agent == "Personalized Learning Assistant":
+                  tasks.append(create_qa_task(prompt=prompt, agent=qa_agent))
+                  agents.append(qa_agent)
+              elif selected_agent == "Quiz Creator":
+                  tasks.append(create_quiz_task(topic=prompt, agent=quiz_agent))
+                  agents.append(quiz_agent)
 
-            # Create and execute the QA task
-            qa_task = create_qa_task(prompt, agent=qa_agent, context=context)
-            crew = Crew(agents=[qa_agent], tasks=[qa_task], verbose=True)
+             
+            elif search_mode == "Online":
+                # Perform web search using WebSearchAgent
+                agents.append(web_search_agent)
+                tasks.append(create_web_search_task(query=prompt, agent=web_search_agent))
+
+            crew = Crew(
+                agents=agents, # Automatically created by the @agent decorator
+                tasks=tasks, # Automatically created by the @task decorator
+                process=Process.sequential,
+                verbose=True,
+            )
 
             result = crew.kickoff()
-
             st.session_state.messages.append({"role": "assistant", "content": result})
-
-            # Add assistant message
-            with messages_container:  # Append assistant response
+            with messages_container:
                 with st.chat_message("assistant"):
                     st.markdown(result)
+
 
 if "uploaded_files" not in st.session_state:
     st.session_state.uploaded_files = []
@@ -138,6 +156,7 @@ with col_files:
                 for file in uploaded_pdfs:
                     if file.name not in [f["name"] for f in st.session_state.uploaded_files]:
                         # Process PDF
+
                         processing_message = content_agent.process_pdf(file)
                         st.write(processing_message)
 
@@ -178,13 +197,19 @@ with col_files:
             if filter_query in file["name"].lower()
         ] if filter_query else uploaded_documents
 
+        # Display files in a structured format
         for file in filtered_files:
             col1, col2 = st.columns([3, 1])
             col1.write(f"📄 {file['name']} - {file['status']}")
-            if col2.button("Remove", key=f"remove_{file['name']}"):
-                # Remove file from ChromaDB
-                remove_message = remove_document_from_chromadb(file["name"])
-                st.write(remove_message)
 
-                # Update display after removal
+            # Add a delete button
+            if col2.button("Remove", key=f"remove_{file['name']}"):
+                # Remove all chunks of the file from ChromaDB
+                try:
+                    remove_message = remove_document_from_chromadb(file["name"], file["ids"])
+                    st.success(remove_message)
+                except Exception as e:
+                    st.error(f"Error removing {file['name']}: {str(e)}")
+
+                # Refresh the displayed documents
                 uploaded_documents = get_uploaded_documents()
