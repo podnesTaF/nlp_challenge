@@ -8,8 +8,6 @@ import os
 
 
 class ContentIngestionAgent:
-    def __init__(self, vector_db_client):
-        self.vector_db_client = vector_db_client
 
     def process_pdf(self, file):
         """
@@ -21,7 +19,11 @@ class ContentIngestionAgent:
             for page in pdf_reader.pages:
                 content += page.extract_text()
             
+            print('works')
+
             response = add_document_to_chromadb(content, file.name)
+
+            print(response)
 
             return f"File {file.name} processed and stored: {response}"
         except Exception as e:
@@ -35,9 +37,6 @@ class ContentIngestionAgent:
             video_id = video_url.split("v=")[-1]
             transcript = YouTubeTranscriptApi.get_transcript(video_id)
             content = " ".join([t['text'] for t in transcript])
-
-            print("video_id", video_id)
-            
                 
             # Add content to the vector database
             response = add_document_to_chromadb(content, video_id)
