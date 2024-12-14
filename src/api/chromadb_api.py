@@ -1,7 +1,7 @@
 import chromadb
-from chromadb.config import Settings
-from src.utils.embeddings import create_embedding
 import os
+from langchain_openai import OpenAIEmbeddings
+
 
 persist_directory = "../../data"
 if not os.path.exists(persist_directory):
@@ -11,68 +11,114 @@ if not os.path.exists(persist_directory):
 
 client = chromadb.PersistentClient(persist_directory)
 
-collection_name = "doc_collection"
+collection_name = "new_collection"
 collection = client.get_or_create_collection(name=collection_name)
+embedding_model = OpenAIEmbeddings()
 
-
-def add_document_to_chromadb(content, doc_id):
+def add_document_to_chromadb(chunks=None, content=None, metadata=None):
     """
-    Add a document to ChromaDB.
-    """
-    try:
-      # Create an embedding for the document content
-      embedding = create_embedding(content)
-      
-      # Add the document, its metadata, and embedding to the collection
-      collection.add(
-            ids=[doc_id],  # Unique ID for the document
-            documents=[content],
-            metadatas=[{"doc_id": doc_id}],  # Single metadata dictionary for the document
-            embeddings=[embedding]
-        )
-      print(f"Document {doc_id} added. Total documents in collection: {collection.count()}")
-      return f"Document {doc_id} added to ChromaDB."
-    except Exception as e:
-      return f"Error adding document {doc_id} to ChromaDB: {e}"
+    Add content or pre-chunked data to ChromaDB.
 
-def retrieve_relevant_docs_from_chromadb(query, top_k=3):
-    """
-    Retrieve relevant documents from ChromaDB based on the query.
-    """
-    query_embedding = create_embedding(query)
-    results = collection.query(query_embeddings=[query_embedding], n_results=top_k)
+    Args:
+        chunks (list[dict]): List of dictionaries, each containing "content" and "metadata".
+        content (str): Raw text content to be stored.
+        metadata (dict): Metadata associated with the raw content.
 
-    relevant_docs = []
-    for doc, meta in zip(results["documents"], results["metadatas"]):
-        # Ensure doc is treated as a string
-        doc_content = " ".join(doc) if isinstance(doc, list) else doc  # Combine if list, or use directly
-        # Simple relevance filter (e.g., keyword check)
-        if any(keyword in doc_content.lower() for keyword in query.lower().split()):  # Adjust for better NLP filtering
-            relevant_docs.append({"document": doc_content, "metadata": meta})
-    return relevant_docs
-
-
-def remove_document_from_chromadb(doc_id):
-    """
-    Remove a document from ChromaDB by its unique identifier.
+    Returns:
+        str: Success or error message.
     """
     try:
-        collection.delete(ids=[doc_id])
-        return f"Document {doc_id} removed from ChromaDB."
+        if chunks:
+            # Add pre-chunked content to ChromaDB
+            for chunk in chunks:
+                embedding = embedding_model.embed_query(chunk["content"])
+                collection.add(
+                    ids=[chunk["metadata"]["unique_id"]],
+                    documents=[chunk["content"]],
+                    metadatas=[chunk["metadata"]],
+                    embeddings=[embedding]
+                )
+        elif content and metadata:
+            # Add raw content with metadata
+            embedding = embedding_model.embed_query(content)
+            collection.add(
+                ids=[metadata["unique_id"]],
+                documents=[content],
+                metadatas=[metadata],
+                embeddings=[embedding]
+            )
+        else:
+            raise ValueError("Either chunks or content with metadata must be provided.")
+
+        return "Content successfully added to ChromaDB."
     except Exception as e:
-        return f"Error removing document {doc_id}: {e}"
+        return f"Error adding content to ChromaDB: {e}"
+
+
+
+def retrieve_relevant_docs_from_chromadb(query, top_k=5):
+    # Embed the query
+    query_embedding = embedding_model.embed_query(query)
+
+    # Retrieve top-k relevant chunks
+    results = collection.query(query_embeddings=[query_embedding], n_results=top_k, include=["documents", "metadatas"])
+    print("most relevant docs", results)
+
+    if not results or not results.get("documents") or not results.get("metadatas"):
+        return "no context"
+    
+  
+    # Flatten the list of documents and metadata
+    documents = [doc for sublist in results["documents"] for doc in sublist]
+    metadatas = [meta for sublist in results["metadatas"] for meta in sublist]
+
+    # Build context with references
+    context_with_references = []
+    for doc, meta in zip(documents, metadatas):
+        file_name = meta.get("file_name", "Unknown File")
+        page = meta.get("page_num", "Unknown Page")
+        context_with_references.append(f"Reference: file name: {file_name}, page: {page}\n{doc}")
+
+    context = "\n\n".join(context_with_references)
+
+    return context
+
+
+
+def remove_document_from_chromadb(file_name, file_ids):
+    """
+    Remove all chunks of a file from ChromaDB using their IDs.
+    """
+    try:
+        # Flatten the list of IDs if it's nested
+        flat_file_ids = [item for sublist in file_ids for item in sublist] if isinstance(file_ids, list) and any(isinstance(i, list) for i in file_ids) else file_ids
+        
+        # Delete all IDs associated with the file
+        collection.delete(ids=flat_file_ids)
+        return f"All chunks of {file_name} have been removed from ChromaDB."
+    except Exception as e:
+        return f"Error removing file {file_name}: {str(e)}"
     
 
 def get_uploaded_documents():
     """
-    Retrieve all documents currently stored in ChromaDB.
+    Retrieve all files currently stored in ChromaDB, grouped by file name.
     """
     try:
-        documents = collection.get(include=["documents", "metadatas"])
-        return [
-            {"name": id, "status": "Processed"}
-            for meta,id in zip(documents["metadatas"], documents['ids'])
-        ]
+        # Fetch documents and metadata from ChromaDB
+        documents = collection.get(include=["metadatas"])
+        
+        # Group documents by file name
+        file_map = {}
+        for meta, doc_id in zip(documents["metadatas"], documents["ids"]):
+            file_name = meta.get("file_name", "Unknown File")  # Fallback if file_name is missing
+            if file_name not in file_map:
+                file_map[file_name] = {"name": file_name, "status": "Processed", "ids": []}
+            file_map[file_name]["ids"].append(doc_id)
+        
+
+        # Convert file_map to a list
+        return list(file_map.values())
     except Exception as e:
         print(f"Error retrieving uploaded documents: {e}")
         return []

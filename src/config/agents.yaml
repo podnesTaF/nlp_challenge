@@ -1,3 +1,0 @@
-agents:
-  - name: "query_agent"
-    description: "Agent to answer questions using Groq API and ChromaDB context"

@@ -1,5 +1,5 @@
 streamlit
-chromadb==0.3.29
+chromadb
 sentence-transformers
 PyPDF2
 pillow
@@ -8,3 +8,17 @@ youtube-transcript-api
 python-pptx
 pytesseract
 llama-index
+crewai
+crewai-tools
+SpeechRecognition
+PyAudio
+gTTS
+pydub
+sounddevice
+SpeechRecognition
+webrtcvad
+numpy
+git+https://github.com/openai/whisper.git
+pyttsx3
+transformers 
+torch
