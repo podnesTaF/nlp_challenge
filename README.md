@@ -18,7 +18,20 @@ A simple Streamlit app that shows how to build a chatbot using OpenAI's GPT-3.5.
    streamlit run streamlit_app.py
    ```
 
-3. Online Search with Referencing
-4. Optionally - add persistence. Keep the summary of conversation
-5. Use vector database - FAISS
-6. Look at LlamaIndex
+3. Add stt tts
+4. Add PDF RAG for "Doc summarizer"
+5. a Quiz (Exam) agent
+6. Extra: Adding (short-term) memory to your chat conversation, so you can reference earlier
+   topics from the same chat-session. You can further extend this with other types of
+   memory, like long term (to really personalize the response based on previous
+   interactions), entity, or even contextual memory
+
+flow is the following:
+
+1. We are embedding and storing files to chromadb after upload.
+
+1. When we making a prompt the following happens:
+
+- Retrieve the most relevant docs
+- RAG search the relevant content
+- summarize the content and write response

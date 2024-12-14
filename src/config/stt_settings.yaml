@@ -1,0 +1,7 @@
+stt:
+  timeout: 5                     # Timeout for audio capture in seconds.
+  phrase_time_limit: 5           # Maximum time for each phrase in seconds.
+  language: "en-US"              # Language for recognition (default: English US).
+  save_audio: false              # Option to save audio files.
+  audio_save_path: "./audio/"    # Directory for saving audio files (if enabled).
+  transcription_save_path: "./transcriptions/"  # Directory for transcription logs.

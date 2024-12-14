@@ -8,7 +8,8 @@ from src.agents.content_agent import ContentIngestionAgent
 import os
 from dotenv import load_dotenv
 from crewai import Crew,Process
-
+from src.stt.real_time_stt import RealTimeSTT
+from src.tts.tts_engine import TTSEngine
 
 load_dotenv()
 
@@ -41,6 +42,11 @@ quiz_agent = initialize_quiz_agent(llm)
 
 web_search_agent = initiate_web_agent(llm)
 
+# Initialize Whisper-based STT and TTS
+tts_response = ''
+real_time_stt = RealTimeSTT(model_name="base")
+tts_engine = TTSEngine()
+
 
 content_type = st.sidebar.selectbox("Choose Content Type to Upload", ["PDF", "YouTube Video", "PowerPoint"])
 
@@ -52,10 +58,72 @@ st.sidebar.write("Selected Agent:", selected_agent)
 # Search mode toggle
 search_mode = st.sidebar.radio("Search Mode", ["Local", "Online"])
 
+response_mode = st.sidebar.radio("Response Mode", ["Text", "Voice"], index=0)
+
+
+# if st.button("Start Listening", key="start_listening_button"): 
+#   with st.spinner("Listening..."): 
+#     transcription = real_time_stt.listen_and_transcribe(duration=10) 
+#     if transcription: 
+#       st.session_state.messages.append({"role": "user", "content": transcription}) 
+#       with st.chat_message("user"): 
+#           st.markdown(transcription) 
+
+#       # Process assistant's response 
+#       response = qa_agent.respond(transcription, mode=search_mode.lower()) 
+#       st.session_state.messages.append({"role": "assistant", "content": response}) 
+#       with st.chat_message("assistant"): 
+#           st.markdown(response) 
+#           tts_response = response
+
+# speak_response_checkbox = st.checkbox("Speak Response", key="speak_response_checkbox") 
+# if speak_response_checkbox: 
+#       tts_engine.speak(tts_response)
 
 
 # Main Layout
 col_chat, col_files = st.columns([3, 1])
+
+def process_input(user_input, agent_type):
+    st.session_state.messages.append({"role": "user", "content": user_input})
+    with messages_container:
+        with st.chat_message("user"):
+            st.markdown(user_input)
+
+    tasks = []
+    agents = []
+
+    if search_mode == "Local":
+        context = retrieve_relevant_docs_from_chromadb(user_input)
+        if context:
+            tasks.append(create_pdf_summary_task(context=context, agent=pdf_summary_agent))
+            agents.append(pdf_summary_agent)
+
+        if agent_type == "Personalized Learning Assistant":
+            tasks.append(create_qa_task(prompt=user_input, agent=qa_agent))
+            agents.append(qa_agent)
+        elif agent_type == "Quiz Creator":
+            tasks.append(create_quiz_task(topic=user_input, agent=quiz_agent))
+            agents.append(quiz_agent)
+
+    elif search_mode == "Online":
+        # Perform web search using WebSearchAgent
+        agents.append(web_search_agent)
+        tasks.append(create_web_search_task(query=user_input, agent=web_search_agent))
+
+    # Execute the tasks
+    crew = Crew(
+        agents=agents,
+        tasks=tasks,
+        process=Process.sequential,
+        verbose=True,
+    )
+    result = crew.kickoff()
+    st.session_state.messages.append({"role": "assistant", "content": result})
+    with messages_container:
+        with st.chat_message("assistant"):
+            st.markdown(result)
+            return result
 
 with col_chat:
     if selected_agent == "Personalized Learning Assistant":
@@ -88,48 +156,18 @@ with col_chat:
         # Input field positioned after messages
         prompt = st.chat_input(input_placeholder)
         if prompt:
-            st.session_state.messages.append({"role": "user", "content": prompt})
-            with messages_container:
-                with st.chat_message("user"):
-                    st.markdown(prompt)
+            tts_response = process_input(prompt, selected_agent)
 
-            tasks = []
-            agents = []
+        # Start Listening button
+        if st.button("Start Listening", key="start_listening_button"):
+            with st.spinner("Listening..."):
+                transcription = real_time_stt.listen_and_transcribe(duration=10)
+                if transcription:
+                    tts_response = process_input(transcription, selected_agent)
 
-            if search_mode == "Local":
-            
-              context = retrieve_relevant_docs_from_chromadb(prompt)
-
-              if context:
-                  tasks.append(create_pdf_summary_task(context=context, agent=pdf_summary_agent))
-                  agents.append(pdf_summary_agent)
-
-          
-              if selected_agent == "Personalized Learning Assistant":
-                  tasks.append(create_qa_task(prompt=prompt, agent=qa_agent))
-                  agents.append(qa_agent)
-              elif selected_agent == "Quiz Creator":
-                  tasks.append(create_quiz_task(topic=prompt, agent=quiz_agent))
-                  agents.append(quiz_agent)
-
-             
-            elif search_mode == "Online":
-                # Perform web search using WebSearchAgent
-                agents.append(web_search_agent)
-                tasks.append(create_web_search_task(query=prompt, agent=web_search_agent))
-
-            crew = Crew(
-                agents=agents, # Automatically created by the @agent decorator
-                tasks=tasks, # Automatically created by the @task decorator
-                process=Process.sequential,
-                verbose=True,
-            )
-
-            result = crew.kickoff()
-            st.session_state.messages.append({"role": "assistant", "content": result})
-            with messages_container:
-                with st.chat_message("assistant"):
-                    st.markdown(result)
+        # TTS Response
+        if st.checkbox("Speak Response", key="speak_response_checkbox"):
+            tts_engine.speak(tts_response)
 
 
 if "uploaded_files" not in st.session_state:
