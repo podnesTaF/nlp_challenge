@@ -8,11 +8,8 @@ class TTSEngine:
         self.engine.setProperty('volume', 0.9)  # Set the volume level
 
     def speak(self, text):
-        """
-        Convert text to speech and play it.
-
-        Args:
-            text (str): The text to be spoken.
-        """
-        self.engine.say(text)
-        self.engine.runAndWait()
+      try:
+          self.engine.say(text)
+          self.engine.runAndWait()
+      except RuntimeError as e:
+          print(f"Error during TTS: {e}")
