@@ -61,26 +61,6 @@ search_mode = st.sidebar.radio("Search Mode", ["Local", "Online"])
 response_mode = st.sidebar.radio("Response Mode", ["Text", "Voice"], index=0)
 
 
-# if st.button("Start Listening", key="start_listening_button"): 
-#   with st.spinner("Listening..."): 
-#     transcription = real_time_stt.listen_and_transcribe(duration=10) 
-#     if transcription: 
-#       st.session_state.messages.append({"role": "user", "content": transcription}) 
-#       with st.chat_message("user"): 
-#           st.markdown(transcription) 
-
-#       # Process assistant's response 
-#       response = qa_agent.respond(transcription, mode=search_mode.lower()) 
-#       st.session_state.messages.append({"role": "assistant", "content": response}) 
-#       with st.chat_message("assistant"): 
-#           st.markdown(response) 
-#           tts_response = response
-
-# speak_response_checkbox = st.checkbox("Speak Response", key="speak_response_checkbox") 
-# if speak_response_checkbox: 
-#       tts_engine.speak(tts_response)
-
-
 # Main Layout
 col_chat, col_files = st.columns([3, 1])
 
@@ -164,7 +144,6 @@ with col_chat:
                 transcription = real_time_stt.listen_and_transcribe(duration=10)
                 if transcription:
                     tts_response = process_input(transcription, selected_agent)
-
         # TTS Response
         if st.checkbox("Speak Response", key="speak_response_checkbox"):
             tts_engine.speak(tts_response)
