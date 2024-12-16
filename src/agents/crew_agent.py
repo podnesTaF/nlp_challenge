@@ -7,9 +7,9 @@ def initialize_pdf_summary_agent(llm):
           name="pdf_summary_agent",
           role="Text Summary Specialist",
           goal="Create detailed, structured summaries or reports based on the content of PDFs, including references to page numbers and file names. If no context provided, return 'no context'.",
-          backstory="You are a highly trained text analysis agent designed to extract, organize, and summarize key insights from text. You specialize in creating detailed, user-friendly reports that reference specific sections, pages, and files.",
+          backstory="You are a highly trained text analysis agent designed to extract, organize, and summarize key insights from text. You specialize in creating detailed, user-friendly reports and in case the context included, reference specific sections, pages, and files.",
           llm=llm,
-          allow_delegation=True
+          allow_delegation=True,
     )
 
 def initialize_question_answering_agent(llm):
@@ -17,7 +17,7 @@ def initialize_question_answering_agent(llm):
         name="question_answering_agent",
         role="Question Answering Specialist",
         goal="Answer user queries by retrieving relevant information from the vector database and generating accurate responses using RAG.",
-        backstory="You are a text analysis agent, capable of navigating large volumes of text content to provide precise answers to user questions. Your responses are concise yet comprehensive, always including references to specific sections, pages, and files.",
+        backstory="You are a text analysis agent, capable of navigating large volumes of text content to provide precise answers to user questions. Your responses are concise yet comprehensive, if context included, add references to specific sections, pages, and files.",
         llm=llm,
     )
 
@@ -31,8 +31,8 @@ def initialize_quiz_agent(llm):
     )
 
 
-def create_pdf_summary_task(context, agent):
-    description = f"Review the provided context and expand each topic into a full section for a report.\nThe provided context is:\n{context}\nMake sure the report is detailed and contains any and all relevant information."
+def create_pdf_summary_task(context, prompt, agent):
+    description = f"Review the provided context and expand each topic into a full section for a report. The topic is \nThe provided context is:\n{context}\nMake sure the report is detailed and contains any and all relevant information."
     if not context:
         description += "\nNo context provided, return 'no context'."
     return Task(
@@ -47,7 +47,7 @@ def create_qa_task(prompt, agent):
     return Task(
         description=description,
         agent=agent,
-        expected_output="A detailed and accurate response including retrieved context and references to the file names and pages used in the response."
+        expected_output="A detailed and accurate response including retrieved context, and if there is a context, add references to the file names and pages used in the response."
     )
 
 def create_quiz_task(topic, agent):
@@ -57,9 +57,4 @@ def create_quiz_task(topic, agent):
         description=description,
         agent=agent,
         expected_output="A multiple-choice quiz with well-formulated questions and answers. Each question should include plausible options, and references to the context should be included wherever applicable."
-    )
-
-def internet_search_agent(query):
-    return Agent(
-        
     )
