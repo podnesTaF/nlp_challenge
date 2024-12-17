@@ -14,7 +14,9 @@ SpeechRecognition
 PyAudio
 gTTS
 pydub
+soundfile
 sounddevice
+pygame
 SpeechRecognition
 webrtcvad
 numpy
