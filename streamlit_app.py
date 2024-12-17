@@ -76,7 +76,7 @@ def process_input(user_input, agent_type):
     if search_mode == "Local":
         context = retrieve_relevant_docs_from_chromadb(user_input)
         if context:
-            tasks.append(create_pdf_summary_task(context=context, agent=pdf_summary_agent))
+            tasks.append(create_pdf_summary_task(context=context, prompt=prompt, agent=pdf_summary_agent))
             agents.append(pdf_summary_agent)
 
         if agent_type == "Personalized Learning Assistant":
@@ -141,12 +141,15 @@ with col_chat:
         # Start Listening button
         if st.button("Start Listening", key="start_listening_button"):
             with st.spinner("Listening..."):
-                transcription = real_time_stt.listen_and_transcribe(duration=10)
+                transcription = real_time_stt.listen_and_transcribe()
                 if transcription:
-                    tts_response = process_input(transcription, selected_agent)
+                    tts_response = str(process_input(transcription, selected_agent))
+
+        button_text = "Speak Response"            
         # TTS Response
         if st.checkbox("Speak Response", key="speak_response_checkbox"):
             tts_engine.speak(tts_response)
+            button_text = 'Stop Playback'
 
 
 if "uploaded_files" not in st.session_state:
