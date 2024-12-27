@@ -18,20 +18,26 @@ class QuestionAnsweringAgent:
             return summary[0]["summary_text"]
         except Exception as e:
             return f"Error summarizing content: {e}"
-
+        
     def respond_local(self, user_input):
         """
-        Use only local vector database to generate responses.
+        Respond to a user's question by retrieving relevant documents and generating a response.
         """
         relevant_docs = retrieve_relevant_docs_from_chromadb(user_input)
         if relevant_docs:
+            # Summarize the documents
             summaries = [
-                f"Reference {i + 1}: {self.summarize_document(doc['document'])} (Source: {doc['metadata']['doc_id']})"
+                {"role": "system", "content": f"Reference {i+1}: {self.summarize_document(doc['document'])}"}
                 for i, doc in enumerate(relevant_docs)
             ]
-            return "\n\n".join(summaries)
+            messages = summaries + [{"role": "user", "content": user_input}]
         else:
-            return "No relevant documents were found in the local database."
+            messages = [
+                {"role": "system", "content": "No relevant documents were found. Answer based on general knowledge."},
+                {"role": "user", "content": user_input},
+            ]
+        return query_groq(user_input, messages, self.groq_api_key)
+
 
     def respond_online(self, user_input):
       """

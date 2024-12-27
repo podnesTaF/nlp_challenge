@@ -33,9 +33,6 @@ st.sidebar.title("Options")
 llm_choice = st.sidebar.selectbox("Choose LLM", ["Groq API (default)", "Other LLMs (future)"])
 st.sidebar.write("Selected LLM:", llm_choice)
 
-# API key inputs
-groq_api_key = st.sidebar.text_input("Enter Groq API Key", type="password")
-
 # Search mode toggle
 search_mode = st.sidebar.radio("Search Mode", ["Local", "Online"])
 
